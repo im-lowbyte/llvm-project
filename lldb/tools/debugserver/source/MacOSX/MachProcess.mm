@@ -1675,6 +1675,12 @@ bool MachProcess::Resume(const DNBThreadResumeActions &thread_actions) {
 }
 
 bool MachProcess::Kill(const struct timespec *timeout_abstime) {
+  // Already detached: do not PT_KILL pid 0, resume the cleared task, mark the
+  // process running again or wait a second for it to be reaped.
+  if (m_pid == INVALID_NUB_PROCESS) {
+    DNBLogThreadedIf(LOG_PROCESS, "MachProcess::Kill() no process to kill");
+    return false;
+  }
   DNBLogThreadedIf(LOG_PROCESS, "MachProcess::Kill ()");
   nub_state_t state = DoSIGSTOP(true, false, NULL);
   DNBLogThreadedIf(LOG_PROCESS, "MachProcess::Kill() DoSIGSTOP() state = %s",
@@ -1745,6 +1751,13 @@ bool MachProcess::Interrupt() {
 }
 
 bool MachProcess::Signal(int signal, const struct timespec *timeout_abstime) {
+  // No process: kill(0, signal) would signal debugserver's own process group.
+  if (ProcessID() == INVALID_NUB_PROCESS) {
+    DNBLogThreadedIf(
+        LOG_PROCESS,
+        "MachProcess::Signal (signal = %d) no process, not sending", signal);
+    return false;
+  }
   DNBLogThreadedIf(LOG_PROCESS,
                    "MachProcess::Signal (signal = %d, timeout = %p)", signal,
                    static_cast<const void *>(timeout_abstime));
@@ -1851,6 +1864,12 @@ nub_state_t MachProcess::DoSIGSTOP(bool clear_bps_and_wps, bool allow_running,
 }
 
 bool MachProcess::Detach() {
+  // Already detached: do not PT_DETACH pid 0, resume the cleared task, tear
+  // down its exception ports or set Detached again. A redundant 'D' gets E01.
+  if (m_pid == INVALID_NUB_PROCESS) {
+    DNBLogThreadedIf(LOG_PROCESS, "MachProcess::Detach() no process to detach");
+    return false;
+  }
   DNBLogThreadedIf(LOG_PROCESS, "MachProcess::Detach()");
 
   uint32_t thread_idx = UINT32_MAX;
